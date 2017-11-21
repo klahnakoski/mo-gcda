@@ -15,12 +15,16 @@ from future.utils import text_type
 from mo_dots import Data
 from mo_logs import Log
 
-
-# https://github.com/mitchhentges/lcov-rs/wiki/File-format
-# https://github.com/gcc-mirror/gcc/blob/master/gcc/gcov-io.h
+FUNCTION_RECORD = 0x01000000
+BLOCKS_RECORD = 0x01410000
+ARCS_RECORD = 0x01430000
+LINES_RECORD = 0x01450000
 
 
 def read(source):
+    # https://github.com/mitchhentges/lcov-rs/wiki/File-format
+    # https://github.com/gcc-mirror/gcc/blob/master/gcc/gcov-io.h
+
     output = Data(
         file_type=read_c(source, 1),
         version=read_c(source, 1),
@@ -28,15 +32,35 @@ def read(source):
     )
 
     records = output.records = []
+    function_record = read_record_header(source)
     while True:
         try:
-            record = read_record_header(source)
-            if not record.record_type:
-                return output
-            reader = TYPES.get(record.record_type, read_unknown)
-            reader(source, record)
-            if reader is not read_ignored:
-                records.append(record)
+            # FUNCTION
+            read_function(source, function_record)
+            records.append(function_record)
+
+            # BLOCKS
+            blocks = read_record_header(source)
+            read_blocks(source, blocks)
+            function_record.blocks = [Data(id=i, flags=flag) for i, flag in enumerate(blocks.block_flags)]
+
+            while True:
+                # ARCS
+                arcs_record = read_record_header(source)
+                if arcs_record._type != ARCS_RECORD:
+                    lines_record = arcs_record
+                    break
+                read_arcs(source, arcs_record)
+                function_record.blocks[arcs_record.source_block].arcs = arcs_record.arcs
+
+            # LINES
+            while True:
+                read_lines(source, lines_record)
+                function_record.blocks[lines_record.block_number].lines=lines_record.lines
+                lines_record = read_record_header(source)
+                if lines_record._type != LINES_RECORD:
+                    function_record = lines_record
+                    break
 
         except Exception as e:
             if "No more records" in e:
@@ -46,17 +70,19 @@ def read(source):
 
 def read_record_header(source):
     try:
-        record_type = read_i4(source)
+        _type = read_u4(source)
     except Exception as e:
-        Log.error("No more records", cause=e)
+        raise Log.error("No more records", cause=e)
 
     return Data(
-        record_type=record_type,
-        record_length=read_u4(source)
+        _type=_type,
+        _length=read_u4(source)
     )
 
 
-def read_function_record(source, record):
+def read_function(source, record):
+    if record._type != FUNCTION_RECORD:
+        Log.error("Expecting function record got {{type|hex}}", type=record._type)
     record.id = read_i4(source)
     record.line_checksum = read_u4(source)
     record.config_checksum = read_u4(source)
@@ -65,7 +91,9 @@ def read_function_record(source, record):
     record.line_number = read_i4(source)
 
 
-def read_lines_record(source, record):
+def read_lines(source, record):
+    if record._type != LINES_RECORD:
+        Log.error("Expecting lines record got {{type|hex}}", type=record._type)
     block_number = read_i4(source)
     lines = []
     filename = None
@@ -82,28 +110,34 @@ def read_lines_record(source, record):
 
 
 def read_blocks(source, record):
-    record.block_flags = read_u4(source, record.record_length)
+    if record._type != BLOCKS_RECORD:
+        Log.error("Expecting blocks record got {{type|hex}}", type=record._type)
+    record.block_flags = read_u4(source, record._length)
 
 
-def read_unknown(source, record):
-    Log.note("Not known record_type {{record_type|hex}}", record_type=record.record_type)
-    read_c(source, record.record_length)
+def read_arcs(source, record):
+    if record._type != ARCS_RECORD:
+        Log.error("Expecting arcs record got {{type|hex}}", type=record._type)
 
-
-def read_ignored(source, record):
-    read_c(source, record.record_length)
-
-
-TYPES = {
-    0x01000000: read_function_record,
-    0x01410000: read_blocks,
-    0x01430000: read_ignored,  # ARCS
-    0x01450000: read_lines_record
-}
+    record.source_block = read_i4(source)
+    arcs = record.arcs = []
+    num, _ = divmod(record._length-1, 2)
+    for _ in range(num):
+        arcs.append({
+            "destination_block": read_i4(source),
+            "flags": read_u4(source)
+        })
 
 
 def read_i4(source):
     return struct.unpack("i", source.read(4))[0]
+
+
+def read_i8(source, length=1):
+    if length == 1:
+        return struct.unpack("q", source.read(8))[0]
+    else:
+        return struct.unpack(text_type(length) + "q", source.read(length*8))
 
 
 def read_u4(source, length=1):
