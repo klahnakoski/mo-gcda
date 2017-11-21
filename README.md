@@ -1,4 +1,4 @@
-# mo-gcda - Read gcno/gcda with pure Python!
+# More GCDA - Read gcno/gcda with pure Python!
 
 ## Overview
 
