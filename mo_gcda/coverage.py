@@ -68,11 +68,13 @@ def accumulate_counts(gcda_file, lookup):
 
 def build_gcno_line_table(zipfile):
     """
+    Firefox gcno are too big to fit in 32bit memory
+
     :param zipfile: zipped directory of gcno files
-    :return: gcno lookup table
+    :return: gcno lookup table: map from function to array of blocks containing lines
     """
 
-    output={}  # map from function to array of blocks containing lines
+    output={}
     with ZipFile(File(zipfile).abspath) as zipped:
         for num, zip_name in enumerate(zipped.namelist()):
             if num==0:
