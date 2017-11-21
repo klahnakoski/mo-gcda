@@ -15,9 +15,46 @@ from mo_logs import Log
 from mo_gcda.gcno import read_i4, read_c, read_record_header, read_i8, read_u4
 
 
+
+def stream_counts(source):
+    """
+    :param source: byte stream of gcda file
+    :return: generator that yields just the counter records
+    """
+
+    data_record = read_record_header(source)
+    while True:
+        try:
+            read_program_summary(source, data_record)
+            function_record = read_record_header(source)
+            while True:
+                read_function_tags(source, function_record)
+                while True:
+                    counter_record = read_record_header(source)
+                    if not counter_record._type:
+                        return
+                    if counter_record._type & 0x0FF00000 != FUNCTION_COUNTERS:
+                        function_record = counter_record
+                        break
+
+                    read_function_counters(source, counter_record)
+                    yield {
+                        "uid": (function_record.id, function_record.config_checksum, function_record.line_checksum),
+                        "counters": counter_record.counters
+                    }
+        except Exception as e:
+            if "No more records" in e:
+                return
+            Log.error("Can not read record", cause=e)
+
+
 def read(source):
+    """
+    :param source: byte stream of the gcda file
+    :return: descriptive structure
+    """
     output = Data(
-        file_type=read_c(source, 1),
+        file_type=read_c(source, 1)[::-1],
         version=read_c(source, 1),
         stamp=read_i4(source)
     )

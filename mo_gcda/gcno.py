@@ -26,18 +26,18 @@ def read(source):
     # https://github.com/gcc-mirror/gcc/blob/master/gcc/gcov-io.h
 
     output = Data(
-        file_type=read_c(source, 1),
+        file_type=read_c(source, 1)[::-1],
         version=read_c(source, 1),
         stamp=read_i4(source)
     )
 
-    records = output.records = []
-    function_record = read_record_header(source)
-    while True:
-        try:
+    functions = output.functions = []
+    try:
+        function_record = read_record_header(source)
+        while True:
             # FUNCTION
             read_function(source, function_record)
-            records.append(function_record)
+            functions.append(function_record)
 
             # BLOCKS
             blocks = read_record_header(source)
@@ -62,10 +62,10 @@ def read(source):
                     function_record = lines_record
                     break
 
-        except Exception as e:
-            if "No more records" in e:
-                return output
-            Log.error("Can not read record", cause=e)
+    except Exception as e:
+        if "No more records" in e:
+            return output
+        Log.error("Can not read record", cause=e)
 
 
 def read_record_header(source):
@@ -104,7 +104,7 @@ def read_lines(source, record):
             if not filename:
                 break
         else:
-            lines.append((filename, line))
+            lines.append({"file": filename, "line": line})
     record.block_number = block_number
     record.lines = lines
 
