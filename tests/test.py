@@ -36,6 +36,18 @@ class Test(FuzzyTestCase):
             result = gcda.read(source)
         Log.note("gcda file: {{result|json}}", result=result)
 
+    def test_gcda_file_2(self):
+        # TEST NO PARSE ERRORS
+        with open_binary_stream(File("tests/resources/stdc++compat.gcda")) as source:
+            result = gcda.read(source)
+        Log.note("gcda file: {{result|json}}", result=result)
+
+
+    # def test_zipped_gcda_file(self):
+    #     # TEST NO PARSE ERRORS
+    #     result = accumulate_counts(File("C:/Users/kyle/Downloads/code-coverage-gcda.zip"), {})
+    #     Log.note("gcda file: {{result|json}}", result=result)
+
     def test_platform(self):
         with open_binary_stream(File("tests/resources/Platform.gcno")) as source:
             result = gcno.read(source)
@@ -44,7 +56,6 @@ class Test(FuzzyTestCase):
         with open_binary_stream(File("tests/resources/Platform.gcda")) as source:
             result = gcda.read(source)
         Log.note("gcda: {{result|json}}", result=result)
-
 
     def test_zipped(self):
         result = coverage.line_coverage("tests/resources/gcno.zip", "tests/resources/gcda.zip")

@@ -11,7 +11,7 @@ from __future__ import unicode_literals
 
 from zipfile import ZipFile
 
-from mo_dots import Data
+from mo_dots import Data, Null
 from mo_files import File
 from mo_logs import Log
 
@@ -50,15 +50,23 @@ def accumulate_counts(gcda_file, lookup):
     """
     output = Data()
     with ZipFile(File(gcda_file).abspath) as zipped:
-        for num, zip_name in enumerate(zipped.namelist()):
-            Log.note("process gcda {{file}}", file=zip_name)
-            for c in gcda.stream(zipped.open(zip_name)):
-                uid, counters = c['uid'], c['counters']
-                blocks = lookup[uid]
-                for b, c in zip(blocks, counters):
-                    if c:
-                        for l in b:
-                            output[l.file][l.line] += c
+        for num, zip_file in enumerate(zipped.filelist):
+            if zip_file.file_size == 0:
+                continue
+            if not zip_file.filename.endswith(".gcda"):
+                continue
+            Log.note("process gcda {{file}}", file=zip_file.filename)
+            try:
+                with zipped.open(zip_file.filename) as source:
+                    for c in gcda.stream_counts(source):
+                        uid, counters = c['uid'], c['counters']
+                        blocks = lookup.get(uid, Null)
+                        for b, c in zip(blocks, counters):
+                            if c:
+                                for l in b:
+                                    output[l.file][l.line] += c
+            except Exception as e:
+                Log.warning("{{filename}} could not be processed", filename=zip_file.filename, cause=e)
     return output
 
 

@@ -74,10 +74,13 @@ def read_record_header(source):
     except Exception as e:
         raise Log.error("No more records", cause=e)
 
-    return Data(
-        _type=_type,
-        _length=read_u4(source)
-    )
+    if not _type:
+        return Data(_type=_type)
+    else:
+        return Data(
+            _type=_type,
+            _length=read_u4(source)
+        )
 
 
 def read_function(source, record):
@@ -133,11 +136,12 @@ def read_i4(source):
     return struct.unpack("i", source.read(4))[0]
 
 
-def read_i8(source, length=1):
-    if length == 1:
-        return struct.unpack("q", source.read(8))[0]
-    else:
-        return struct.unpack(text_type(length) + "q", source.read(length*8))
+def read_i8(source):
+    return struct.unpack("q", source.read(8))[0]
+
+
+def read_i8s(source, length):
+    return struct.unpack(text_type(length) + "q", source.read(length*8))
 
 
 def read_u4(source, length=1):

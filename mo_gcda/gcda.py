@@ -12,8 +12,7 @@ from __future__ import unicode_literals
 from mo_dots import Data
 from mo_logs import Log
 
-from mo_gcda.gcno import read_i4, read_c, read_record_header, read_i8, read_u4
-
+from mo_gcda.gcno import read_i4, read_c, read_record_header, read_i8, read_u4, read_i8s
 
 
 def stream_counts(source):
@@ -21,13 +20,27 @@ def stream_counts(source):
     :param source: byte stream of gcda file
     :return: generator that yields just the counter records
     """
-
+    read_file_header(source)
     data_record = read_record_header(source)
     while True:
         try:
-            read_program_summary(source, data_record)
-            function_record = read_record_header(source)
             while True:
+                read_program_summary(source, data_record)
+                function_record = read_record_header(source)
+                if function_record._type==PROGRAM_SUMMARY:
+                    # WE CAN HAVE MULTIPLE SUMMARIES
+                    data_record = function_record
+                else:
+                    break
+
+            while True:
+                if function_record._type & 0x0FF00000 == FUNCTION_COUNTERS:
+                    # THE FUNCTION RECORD APPEARS TO BE MISSING!!
+                    counter_record = function_record
+                    read_function_counters(source, counter_record)
+                    function_record = read_record_header(source)
+                    continue
+
                 read_function_tags(source, function_record)
                 while True:
                     counter_record = read_record_header(source)
@@ -53,21 +66,22 @@ def read(source):
     :param source: byte stream of the gcda file
     :return: descriptive structure
     """
-    output = Data(
-        file_type=read_c(source, 1)[::-1],
-        version=read_c(source, 1),
-        stamp=read_i4(source)
-    )
-
+    output = read_file_header(source)
     records = output.records = []
     data_record = read_record_header(source)
     while True:
         try:
-            read_program_summary(source, data_record)
-            records.append(data_record)
+            while True:
+                read_program_summary(source, data_record)
+                records.append(data_record)
+                functions = data_record.functions = []
+                function_record = read_record_header(source)
+                if function_record._type==PROGRAM_SUMMARY:
+                    # WE CAN HAVE MULTIPLE SUMMARIES
+                    data_record = function_record
+                else:
+                    break
 
-            functions = data_record.functions = []
-            function_record = read_record_header(source)
             while True:
                 read_function_tags(source, function_record)
                 functions.append(function_record)
@@ -91,6 +105,26 @@ def read(source):
             if "No more records" in e:
                 return output
             Log.error("Can not read record", cause=e)
+
+
+def read_file_header(source):
+    try:
+        try:
+            file_type = read_c(source, 1)[::-1]
+        except Exception as e:
+            raise Log.error("not a file", cause=e)
+        if file_type != "gcda":
+            Log.error("not a gcda file!")
+        version = read_c(source, 1)
+        stamp = read_i4(source)
+    except Exception as e:
+        raise Log.error("problem reading gcda", cause=e)
+
+    return Data(
+        file_type=file_type,
+        version=version,
+        stamp=stamp
+    )
 
 
 def read_program_summary(source, record):
@@ -139,14 +173,12 @@ def read_function_counters(source, record):
     if record._length % 2:
         Log.error("expecting an even number")
     record.run, _ = divmod((record._type & 0x000FFFFF) - 0x10000, 0x20000)
-    record.counters = read_i8(source, int(record._length / 2))
+    record.counters = read_i8s(source, int(record._length / 2))
 
 
 def do_not_know_how_to_handle_multiple_runs(source, record):
     Log.error("not implemented yet")
 
-
 PROGRAM_SUMMARY = int(0xa3000000)
 FUNCTION_TAG = 0x01000000
 FUNCTION_COUNTERS = 0x01a00000
-
