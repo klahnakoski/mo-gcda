@@ -6,6 +6,9 @@ This is a lightwight library that can read `*.gcno` and `*.gcda` files that come
 
 
 
+### Installing PyPy
 
+You will require PyPy to process the larger gcno/gcda zipped directories.
 
-
+    c:\pypy\pypy.exe -m ensurepip
+    c:\pypy\bin\pip.exe install -r requirements.txt
